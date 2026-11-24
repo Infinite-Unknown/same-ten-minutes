@@ -33,11 +33,13 @@ async function overpass(query: string, signal: AbortSignal): Promise<{ elements:
   let last = 0;
   for (const url of SERVERS) {
     try {
-      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal });
+      // give each server a fair minute, then move on
+      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
       if (res.ok) return res.json();
       last = res.status;
     } catch (e) {
-      if ((e as Error).name === 'AbortError') throw e;
+      if (signal.aborted) throw e;
+      last = 504; // timed out or unreachable: treat as busy
     }
   }
   if (last === 429 || last === 502 || last === 503 || last === 504)

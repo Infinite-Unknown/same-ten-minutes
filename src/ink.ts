@@ -78,6 +78,14 @@ export class Ink {
     resize();
   }
 
+  /** where the mark of a barrier sits, as [lng, lat], or null when it is not drawn */
+  markLngLat(barrier: number): [number, number] | null {
+    const m = this.marks.find((k) => k.barrier === barrier);
+    if (!m) return null;
+    const ll = new maplibregl.MercatorCoordinate(m.x, m.y).toLngLat();
+    return [ll.lng, ll.lat];
+  }
+
   get playing() {
     return this.raf !== 0;
   }
@@ -247,8 +255,11 @@ export class Ink {
     const g = this.geo!;
     const z = this.map.getZoom();
     const scale = 512 * 2 ** z;
-    const c = maplibregl.MercatorCoordinate.fromLngLat(this.map.getCenter());
-    const w = this.canvas.clientWidth / 2, h = this.canvas.clientHeight / 2;
+    const center = this.map.getCenter();
+    const c = maplibregl.MercatorCoordinate.fromLngLat(center);
+    // the map centre sits inside the padded viewport, not at the canvas centre
+    const pc = this.map.project(center);
+    const w = pc.x, h = pc.y;
     for (let v = 0; v < g.n; v++) {
       this.sx[v] = (this.mx[v] - c.x) * scale + w;
       this.sy[v] = (this.my[v] - c.y) * scale + h;
@@ -361,7 +372,8 @@ export class Ink {
   private drawMarks(res: ReachResult, now: number, walkW: number, view: { scale: number; cx: number; cy: number; w: number; h: number; z: number }) {
     const ctx = this.ctx;
     const fix = this.fixIdx >= 0 ? res.fixes[this.fixIdx] : null;
-    const half = Math.max(6, walkW * 0.75);
+    const half = Math.max(4, Math.min(12, walkW * 0.75));
+    const markW = view.z >= 15.5 ? 3 : 2;
     for (const m of this.marks) {
       if (m.at > this.T) continue;
       const [x, y] = this.toScreen(m.x, m.y, view);
@@ -378,10 +390,10 @@ export class Ink {
       ctx.translate(x, y);
       ctx.scale(s, s);
       const kind = this.barriers[m.barrier].kind;
-      const bars = kind === 'steps' ? [-2.6, 2.6] : [0];
+      const bars = kind === 'steps' ? [-markW * 0.9, markW * 0.9] : [0];
       for (const pass of [0, 1]) {
         ctx.strokeStyle = pass === 0 ? C.paper : C.ink;
-        ctx.lineWidth = pass === 0 ? 6.5 : 3;
+        ctx.lineWidth = pass === 0 ? markW + 3.5 : markW;
         ctx.lineCap = 'butt';
         for (const o of bars) {
           ctx.beginPath();
@@ -427,7 +439,7 @@ export class Ink {
   private drawPois(res: ReachResult, fixArr: Float32Array | null, view: { scale: number; cx: number; cy: number; w: number; h: number; z: number }) {
     const ctx = this.ctx;
     const B = res.budget;
-    const r = view.z >= 16 ? 7 : 5.5;
+    const r = view.z >= 16 ? 7 : view.z >= 15 ? 5.5 : 4.5;
     for (const p of this.pois) {
       if (p.at < 0) continue;
       const tw = res.walk[p.at];

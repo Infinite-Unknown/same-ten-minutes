@@ -23,3 +23,6 @@ PRODUCT.md
 .DS_Store
 *.log
 scripts/tmp/
+
+# demo video: uploaded separately, too large for the repo
+assets/demo.mp4

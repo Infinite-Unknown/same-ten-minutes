@@ -60,7 +60,10 @@ const map = await createMap(mapEl, initial ? [initial.lat, initial.lon] : [3.142
   throw e;
 });
 applyPadding();
-const ink = new Ink(map, $<HTMLCanvasElement>('ink'));
+// the ink canvas lives inside the map's canvas container so the pin marker sits above it
+const inkCanvas = $<HTMLCanvasElement>('ink');
+map.getCanvasContainer().appendChild(inkCanvas);
+const ink = new Ink(map, inkCanvas);
 ink.onFrame = onFrame;
 
 const pinEl = document.createElement('div');
@@ -70,13 +73,16 @@ const pin = new maplibregl.Marker({ element: pinEl, anchor: 'bottom' });
 
 renderMethod();
 wireControls();
+// inspection hook for scripted checks and recordings: ?debug
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { stm: { map, state, ink } });
 loadIndex().then(() => {
   if (initial) {
     setBudget(initial.minutes);
     if (initial.hills) { state.hills = 'block'; $<HTMLInputElement>('hills').checked = true; }
     dropPin(initial.lat, initial.lon, 'this spot');
   } else if (state.index[0]) {
-    choosePlace(state.index[0]);
+    const want = hashPlace();
+    choosePlace(state.index.find((p) => p.id === want) ?? state.index[0]);
   }
 });
 
@@ -174,7 +180,7 @@ async function dropPin(lat: number, lon: number, name = 'this spot', preferId?: 
       return;
     }
     state.result = res;
-    writeHash();
+    writeHash(preferId);
     framePin(res);
     renderResult(res);
     ink.setResult(res);
@@ -451,9 +457,11 @@ function setProgress(on: boolean) {
 
 // ---------- link and print ----------
 
-function writeHash() {
+function writeHash(placeId?: string) {
   if (!state.pin) return;
-  const h = `#${state.pin.lat.toFixed(5)},${state.pin.lon.toFixed(5)},${state.budget / 60}${state.hills === 'block' ? ',hills' : ''}`;
+  const h = placeId && state.budget === 600 && state.hills === 'flag'
+    ? `#place=${placeId}`
+    : `#${state.pin.lat.toFixed(5)},${state.pin.lon.toFixed(5)},${state.budget / 60}${state.hills === 'block' ? ',hills' : ''}`;
   history.replaceState(null, '', h);
 }
 
@@ -461,6 +469,11 @@ function parseHash() {
   const m = /^#(-?[\d.]+),(-?[\d.]+),(\d+)(,hills)?$/.exec(location.hash);
   if (!m) return null;
   return { lat: +m[1], lon: +m[2], minutes: +m[3], hills: !!m[4] };
+}
+
+/** `#place=<sample id>` opens one of the sample places */
+function hashPlace() {
+  return /^#place=([\w-]+)$/.exec(location.hash)?.[1] ?? null;
 }
 
 function printSheet() {
