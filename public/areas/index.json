@@ -18,5 +18,15 @@
       -9.13566
     ],
     "fetchedAt": "2026-07-15T15:22:01Z"
+  },
+  {
+    "id": "berlin-alexanderplatz",
+    "name": "Alexanderplatz",
+    "place": "Berlin, Germany",
+    "center": [
+      52.52034,
+      13.41409
+    ],
+    "fetchedAt": "2026-11-24T10:31:51Z"
   }
 ]

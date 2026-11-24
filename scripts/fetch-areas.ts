@@ -19,11 +19,13 @@ const SERVERS = [
 // half-width of each extract: big enough that 15 minutes on foot from the centre stays inside
 const HALF_KM = 1.6;
 
-export const AREAS: { id: string; name: string; place: string; lat: number; lon: number }[] = [
+// Four candidates were tested; Hong Kong Central was not kept (terrain data is dominated by
+// tall buildings there and the map confirms too little of the wheelchair route to be a fair sample).
+// `pin` is where the sample place drops the pin: a street-level spot near the centre.
+export const AREAS: { id: string; name: string; place: string; lat: number; lon: number; pin?: [number, number] }[] = [
   { id: 'kl-masjid-jamek', name: 'Masjid Jamek', place: 'Kuala Lumpur, Malaysia', lat: 3.1473, lon: 101.69497 },
   { id: 'lisbon-martim-moniz', name: 'Martim Moniz', place: 'Lisbon, Portugal', lat: 38.71411, lon: -9.13566 },
-  { id: 'hk-central', name: 'Central', place: 'Hong Kong', lat: 22.28195, lon: 114.15805 },
-  { id: 'berlin-alexanderplatz', name: 'Alexanderplatz', place: 'Berlin, Germany', lat: 52.52155, lon: 13.41155 },
+  { id: 'berlin-alexanderplatz', name: 'Alexanderplatz', place: 'Berlin, Germany', lat: 52.52155, lon: 13.41155, pin: [52.52034, 13.41409] },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -99,7 +101,7 @@ async function main() {
   // index of whatever areas exist on disk
   const index = AREAS.filter((a) => existsSync(`public/areas/${a.id}.json`)).map((a) => {
     const d = JSON.parse(readFileSync(`public/areas/${a.id}.json`, 'utf8'));
-    return { id: a.id, name: a.name, place: a.place, center: [a.lat, a.lon], fetchedAt: d.fetchedAt };
+    return { id: a.id, name: a.name, place: a.place, center: a.pin ?? [a.lat, a.lon], fetchedAt: d.fetchedAt };
   });
   writeFileSync('public/areas/index.json', JSON.stringify(index, null, 2));
 }

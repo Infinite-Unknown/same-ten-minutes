@@ -3,7 +3,7 @@
 
 import type { AreaData } from './engine/area.ts';
 import { UNVERIFIED_KERB, UNVERIFIED_SLOPE, UNVERIFIED_SURFACE, buildGraph, nearestNode, type Graph } from './engine/graph.ts';
-import { frontierBarriers, rankFixes, reach, stats } from './engine/reach.ts';
+import { edgeCover, frontierBarriers, rankFixes, reach, stats } from './engine/reach.ts';
 import type { WorkerIn, WorkerOut, ReachResult } from './protocol.ts';
 
 let graph: Graph | null = null;
@@ -43,7 +43,9 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
       const wc = reach(g, { profile: 'wheelchair', start: snap.node, budget: B });
       const ws = stats(g, walk, B, 'walk');
       const cs = stats(g, wc, B, 'wheelchair');
-      const fixes = rankFixes(g, snap.node, B, wc, 3);
+      // every fixable barrier that, removed alone, gives something back; the top three are offered
+      const effective = rankFixes(g, snap.node, B, wc, Infinity);
+      const fixes = effective.slice(0, 3);
       // why unverified: share of wheelchair-reached length per reason
       const why = { surface: 0, kerb: 0, slope: 0 };
       for (let e = 0; e < g.m; e++) {
@@ -51,7 +53,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
         if (!u) continue;
         const ta = wc[g.ea[e]], tb = wc[g.eb[e]];
         if (ta > B && tb > B) continue;
-        const l = g.len[e];
+        const l = edgeCover(g, wc, e, B, 'wheelchair') * g.len[e];
         if (u & UNVERIFIED_SURFACE) why.surface += l;
         if (u & UNVERIFIED_KERB) why.kerb += l;
         if (u & UNVERIFIED_SLOPE) why.slope += l;
@@ -59,7 +61,8 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
       const res: ReachResult = {
         type: 'reach', id: msg.id, start: snap.node, startDist: snap.dist, budget: B,
         walk, wc, walkStats: ws, wcStats: cs,
-        frontier: frontierBarriers(g, wc, B),
+        // marks: barriers that cut something off (plus unfixable ones on the edge, e.g. a hill in block mode)
+        frontier: [...effective.map((f) => f.barrier), ...frontierBarriers(g, wc, B).filter((b) => !g.barriers[b].fixable)],
         fixes: fixes.map((f) => ({ barrier: f.barrier, gainLength: f.gainLength, gainPois: f.gainPois, newPois: f.newPois, arr: f.arr, stats: f.stats })),
         unverifiedWhy: why,
       };
