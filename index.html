@@ -15,11 +15,17 @@
         <div id="map" aria-label="Map. Click or tap a street to drop the pin. With the map focused, arrow keys pan, plus and minus zoom, and Enter drops the pin at the centre."></div>
         <canvas id="ink" aria-hidden="true"></canvas>
         <div class="crosshair" aria-hidden="true"></div>
-        <p class="map-hint" id="map-hint" aria-hidden="true">Click a street to drop the pin</p>
+        <p class="map-hint gone" id="map-hint" aria-hidden="true">Click any street to move the pin</p>
       </div>
 
-      <main class="card" id="panel" tabindex="-1">
-        <div class="progress" id="progress" aria-hidden="true"></div>
+      <main class="card" id="panel" tabindex="-1" aria-busy="true">
+        <div class="card-top" aria-hidden="true">
+          <div class="progress on" id="progress"></div>
+          <div class="readout" id="readout">
+            <span class="ro-fig"><span id="ro-num">0</span><span class="ro-pc">%</span></span>
+            <span class="ro-cap">of the street reached on foot, by wheelchair, in <span data-budget>10</span> min<span id="ro-fix"></span></span>
+          </div>
+        </div>
         <header class="intro reveal">
           <h1>Same Ten Minutes</h1>
           <p class="lede">Two people leave the same spot. In the same time, how much of the neighbourhood can a wheelchair user reach?</p>
@@ -48,10 +54,10 @@
 
         <section class="result reveal" id="result" aria-labelledby="result-h">
           <h2 id="result-h" class="sr-only">Result</h2>
-          <div class="empty" id="empty">
+          <div class="empty" id="empty" hidden>
             <p><strong>Drop a pin on a street</strong> to compare. Or pick a sample place above.</p>
           </div>
-          <div class="status" id="status" role="status" hidden></div>
+          <div class="status" id="status" role="status"><p>Loading the map…</p></div>
           <div class="filled" id="filled" hidden>
             <p class="gap" aria-hidden="true"><span class="gap-num" id="gap-num">0</span><span class="gap-pc">%</span></p>
             <p class="gap-caption" aria-hidden="true">of the street a person on foot reaches in <span data-budget>10</span> minutes, a wheelchair user reaches too.</p>

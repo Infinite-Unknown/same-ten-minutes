@@ -10,6 +10,7 @@ const C = {
   walkEdge: 'rgba(31,79,163,0.55)',
   wheel: '#E4572E',
   ink: '#1B1A17',
+  ink2: '#4D483F',
   paper: '#FBF8F2',
   walkSolid: '#1F4FA3',
 };
@@ -57,7 +58,13 @@ export class Ink {
   private fixT = 0;
   private fixT0 = 0;
   private liftStart = 0;
+  /** places that the chosen fix brings within reach: poi index -> real ms when the ink got there */
+  private pops = new Map<number, number>();
+  private pinX = NaN;
+  private pinY = NaN;
   private raf = 0;
+  /** one pending redraw while pulses, ripples and pops finish after the clock has stopped */
+  private settle = 0;
   private reduced = matchMedia('(prefers-reduced-motion: reduce)');
   onFrame: (f: InkFrame) => void = () => {};
 
@@ -88,6 +95,21 @@ export class Ink {
 
   get playing() {
     return this.raf !== 0;
+  }
+
+  /** where the pin stands, so rank badges can keep clear of it */
+  setPin(lng: number, lat: number) {
+    const c = maplibregl.MercatorCoordinate.fromLngLat([lng, lat]);
+    this.pinX = c.x;
+    this.pinY = c.y;
+  }
+
+  private redrawSoon() {
+    if (this.raf || this.settle) return;
+    this.settle = requestAnimationFrame(() => {
+      this.settle = 0;
+      this.draw();
+    });
   }
 
   setGeo(geo: Geo, barriers: BarrierInfo[], pois: SnappedPoi[]) {
@@ -134,6 +156,7 @@ export class Ink {
     this.wcEdges = pick(res.wc);
     this.marks = this.computeMarks(res);
     this.pulses.clear();
+    this.pops.clear();
   }
 
   private computeMarks(res: ReachResult): Mark[] {
@@ -216,6 +239,7 @@ export class Ink {
     this.fixEdges = Uint32Array.from(out);
     const mark = this.marks.find((m) => m.barrier === fix.barrier);
     this.fixT0 = mark ? mark.at : 0;
+    this.pops.clear();
     if (this.reduced.matches) {
       this.fixT = B;
       this.liftStart = -1e9;
@@ -227,7 +251,15 @@ export class Ink {
     this.liftStart = t0;
     const tick = (now: number) => {
       const p = Math.min(1, (now - t0) / dur);
+      const prevT = this.fixT;
       this.fixT = this.fixT0 + (B - this.fixT0) * easeOutCubic(p);
+      // places the fix brings within reach pop as the ink arrives at them
+      for (let k = 0; k < this.pois.length; k++) {
+        const at = this.pois[k].at;
+        if (at < 0 || !(res.walk[at] <= B) || res.wc[at] <= B) continue;
+        const t = fix.arr[at];
+        if (t > prevT && t <= this.fixT) this.pops.set(k, now);
+      }
       this.draw(now);
       if (p < 1) this.raf = requestAnimationFrame(tick);
       else { this.raf = 0; this.draw(now); }
@@ -239,6 +271,7 @@ export class Ink {
   clearFix() {
     this.stop();
     this.fixIdx = -1;
+    this.pops.clear();
     this.draw();
   }
 
@@ -372,17 +405,35 @@ export class Ink {
   private drawMarks(res: ReachResult, now: number, walkW: number, view: { scale: number; cx: number; cy: number; w: number; h: number; z: number }) {
     const ctx = this.ctx;
     const fix = this.fixIdx >= 0 ? res.fixes[this.fixIdx] : null;
-    const half = Math.max(4, Math.min(12, walkW * 0.75));
-    const markW = view.z >= 15.5 ? 3 : 2;
-    for (const m of this.marks) {
+    const baseHalf = Math.max(4, Math.min(12, walkW * 0.75));
+    const baseW = view.z >= 15.5 ? 3 : 2;
+    // the pin's body, so the rank badges never hide under it
+    const [pinX, pinY] = Number.isNaN(this.pinX) ? [NaN, NaN] : this.toScreen(this.pinX, this.pinY, view);
+    const pinBodyY = pinY - 17;
+    // ranked marks last, so the actionable ones sit on top
+    const order = [...this.marks].sort((a, b) => (a.rank ? 4 - a.rank : 0) - (b.rank ? 4 - b.rank : 0));
+    for (const m of order) {
       if (m.at > this.T) continue;
       const [x, y] = this.toScreen(m.x, m.y, view);
       const px = -m.dy, py = m.dx; // perpendicular
+      const ranked = m.rank > 0;
+      const half = ranked ? baseHalf * 1.2 : baseHalf;
+      const markW = ranked ? baseW + 1 : baseW;
       let alpha = 1, s = 1;
       if (fix && fix.barrier === m.barrier) {
         const p = Math.min(1, (now - this.liftStart) / 360);
         alpha = 1 - p;
         s = 1 + 0.6 * easeOutCubic(p);
+        // the barrier gives way: one vermilion ring runs out from where it stood
+        const q = (now - this.liftStart) / 900;
+        if (q < 1 && !this.reduced.matches) {
+          ctx.beginPath();
+          ctx.arc(x, y, 8 + 46 * easeOutCubic(q), 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(228,87,46,${0.75 * (1 - q)})`;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          this.redrawSoon();
+        }
         if (alpha <= 0) continue;
       }
       ctx.save();
@@ -392,7 +443,7 @@ export class Ink {
       const kind = this.barriers[m.barrier].kind;
       const bars = kind === 'steps' ? [-markW * 0.9, markW * 0.9] : [0];
       for (const pass of [0, 1]) {
-        ctx.strokeStyle = pass === 0 ? C.paper : C.ink;
+        ctx.strokeStyle = pass === 0 ? C.paper : ranked ? C.ink : C.ink2;
         ctx.lineWidth = pass === 0 ? markW + 3.5 : markW;
         ctx.lineCap = 'butt';
         for (const o of bars) {
@@ -414,24 +465,46 @@ export class Ink {
           ctx.strokeStyle = `rgba(27,26,23,${0.55 * (1 - p)})`;
           ctx.lineWidth = 2;
           ctx.stroke();
-          if (!this.raf) requestAnimationFrame(() => this.draw());
+          this.redrawSoon();
         }
       }
 
-      if (m.rank && alpha > 0) {
-        const bx = x + px * (half + 12), by = y + py * (half + 12);
+      if (ranked && alpha > 0) {
+        // badge on the side away from the pin, pushed further out if the pin is still in the way
+        let side = 1;
+        const clearOf = (sd: number, d: number) => Math.hypot(x + px * sd * d - pinX, y + py * sd * d - pinBodyY);
+        let d = half + 14;
+        if (!Number.isNaN(pinX)) {
+          side = clearOf(1, d) >= clearOf(-1, d) ? 1 : -1;
+          while (clearOf(side, d) < 30 && d < half + 64) d += 4;
+        }
+        const ux = px * side, uy = py * side;
+        const bx = x + ux * d, by = y + uy * d;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        // leader from the mark to its badge, so the number belongs to this barrier
+        ctx.lineCap = 'round';
+        for (const pass of [0, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(x + ux * (half + 1), y + uy * (half + 1));
+          ctx.lineTo(bx - ux * 10, by - uy * 10);
+          ctx.strokeStyle = pass === 0 ? C.paper : C.ink;
+          ctx.lineWidth = pass === 0 ? 4 : 1.5;
+          ctx.stroke();
+        }
         ctx.beginPath();
-        ctx.arc(bx, by, 10, 0, Math.PI * 2);
+        ctx.arc(bx, by, 11, 0, Math.PI * 2);
         ctx.fillStyle = C.ink;
         ctx.fill();
         ctx.lineWidth = 2;
         ctx.strokeStyle = C.paper;
         ctx.stroke();
         ctx.fillStyle = C.paper;
-        ctx.font = '700 12px "Atkinson Hyperlegible Next Variable", system-ui, sans-serif';
+        ctx.font = '700 13px "Atkinson Hyperlegible Next Variable", system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(String(m.rank), bx, by + 0.5);
+        ctx.restore();
       }
     }
   }
@@ -440,7 +513,9 @@ export class Ink {
     const ctx = this.ctx;
     const B = res.budget;
     const r = view.z >= 16 ? 7 : view.z >= 15 ? 5.5 : 4.5;
-    for (const p of this.pois) {
+    const now = performance.now();
+    for (let k = 0; k < this.pois.length; k++) {
+      const p = this.pois[k];
       if (p.at < 0) continue;
       const tw = res.walk[p.at];
       if (!(tw <= B) || tw > this.T) continue;
@@ -449,6 +524,16 @@ export class Ink {
       const [x, y] = this.toScreen(c.x, c.y, view);
       ctx.save();
       ctx.translate(x, y);
+      // a place the fix brings within reach is stamped in: it lands large and settles
+      const popAt = this.pops.get(k);
+      if (popAt !== undefined && !this.reduced.matches) {
+        const q = (now - popAt) / 420;
+        if (q < 1) {
+          const sc = 1 + 0.6 * (1 - easeOutCubic(q));
+          ctx.scale(sc, sc);
+          this.redrawSoon();
+        }
+      }
       ctx.beginPath();
       if (p.cat === 'school') ctx.rect(-r, -r, 2 * r, 2 * r);
       else if (p.cat === 'health') ctx.arc(0, 0, r + 0.5, 0, Math.PI * 2);

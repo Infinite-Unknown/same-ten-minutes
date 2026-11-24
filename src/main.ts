@@ -56,6 +56,7 @@ worker.onmessage = (ev: MessageEvent<WorkerOut>) => {
 const mapEl = $('map');
 const initial = parseHash();
 const map = await createMap(mapEl, initial ? [initial.lat, initial.lon] : [3.14245, 101.69545], 15.3).catch((e) => {
+  setProgress(false);
   showStatus(`The basemap did not load (${(e as Error).message}). Check the connection and reload.`, true);
   throw e;
 });
@@ -83,8 +84,43 @@ loadIndex().then(() => {
   } else if (state.index[0]) {
     const want = hashPlace();
     choosePlace(state.index.find((p) => p.id === want) ?? state.index[0]);
+  } else {
+    // nothing bundled and no link: the empty state asks for a pin
+    setProgress(false);
+    $('status').hidden = true;
+    $('empty').hidden = false;
+    showHint();
   }
 });
+
+// ---------- the pinned readout: the gap figure stays in view while the card scrolls ----------
+
+let gapInView = true;
+new IntersectionObserver(
+  ([e]) => { gapInView = e.isIntersecting; updateReadout(); },
+  // the readout covers the top of the card, so a figure under it counts as out of view
+  { root: $('panel'), rootMargin: '-64px 0px 0px 0px' },
+).observe(document.querySelector('.gap')!);
+
+function updateReadout() {
+  const on = !!state.result && !$('filled').hidden && !gapInView;
+  $('readout').classList.toggle('on', on);
+}
+
+// ---------- the map hint: shown once the first result has settled, gone on the next pin ----------
+
+let hintShown = false;
+function showHint() {
+  if (hintShown) return;
+  hintShown = true;
+  const h = $('map-hint');
+  h.textContent = `${matchMedia('(hover: none)').matches ? 'Tap' : 'Click'} any street to move the pin`;
+  h.classList.remove('gone');
+  // it has done its job once the map has been touched, or after a few seconds
+  const hide = () => h.classList.add('gone');
+  map.once('dragstart', hide);
+  setTimeout(hide, 6000);
+}
 
 // ---------- areas ----------
 
@@ -162,6 +198,7 @@ async function dropPin(lat: number, lon: number, name = 'this spot', preferId?: 
   svg.style.animation = '';
   $('map-hint').classList.add('gone');
   ink.clear();
+  ink.setPin(lon, lat);
   setProgress(true);
   showStatus('Finding the streets…');
   try {
@@ -219,11 +256,15 @@ function onFrame(f: InkFrame) {
   const pct = walkFinal > 0 ? Math.round((100 * wc) / walkFinal) : 0;
   if (pct !== state.lastPct) {
     $('gap-num').textContent = String(pct);
+    $('ro-num').textContent = String(pct);
     state.lastPct = pct;
   }
   $('km-walk').textContent = km(f.walkLen);
   $('km-wheel').textContent = km(wc);
-  if (f.done) $('sentence').textContent = sentence(r, fix ? fix.stats.length : r.wcStats.length);
+  if (f.done) {
+    $('sentence').textContent = sentence(r, fix ? fix.stats.length : r.wcStats.length);
+    showHint();
+  }
 }
 
 function renderResult(r: ReachResult) {
@@ -237,6 +278,8 @@ function renderResult(r: ReachResult) {
   renderReached(r);
   renderConfidence(r);
   renderFixes(r);
+  $('ro-fix').textContent = '';
+  updateReadout();
   ($('print') as HTMLButtonElement).disabled = false;
   ($('share') as HTMLButtonElement).disabled = false;
 }
@@ -290,8 +333,10 @@ function renderFixes(r: ReachResult) {
     btn.setAttribute('aria-pressed', 'false');
     const what = FIX_VERB[b.kind] ?? 'Fix';
     const places = newPlaces.length ? ` · <b>+${newPlaces.length}</b> ${newPlaces.length === 1 ? placeNoun(newPlaces[0]) : 'places'}` : '';
-    btn.innerHTML = `<span class="fix-rank" aria-hidden="true">${i + 1}</span><span><span class="fix-name">${esc(b.label)}</span>` +
-      `<span class="fix-gain">${what}: <b>+${km(f.gainLength)}</b> of street${places} · ${basePct}% → ${pct(f.stats.length, walkFinal)}%</span></span>`;
+    li.style.setProperty('--i', String(i));
+    btn.innerHTML = `<span class="fix-rank" aria-hidden="true">${i + 1}</span><span class="fix-body"><span class="fix-name">${esc(b.label)}</span>` +
+      `<span class="fix-gain">${what}: <b>+${km(f.gainLength)}</b> of street${places}</span></span>` +
+      `<span class="fix-after"><span class="fix-from">${basePct}% →</span> ${pct(f.stats.length, walkFinal)}%</span>`;
     btn.addEventListener('click', () => selectFix(state.fix === i ? -1 : i));
     const osm = document.createElement('a');
     osm.className = 'fix-osm';
@@ -319,6 +364,7 @@ function selectFix(i: number) {
   ink.finish();
   state.fix = i;
   for (const [k, b] of [...document.querySelectorAll('.fix')].entries()) b.setAttribute('aria-pressed', String(k === i));
+  $('ro-fix').textContent = i >= 0 ? `, with fix ${i + 1}` : '';
   renderReached(r);
   if (i < 0) {
     ink.clearFix();
@@ -383,13 +429,14 @@ function wireControls() {
     try {
       const p = await geocode(q, ctl.signal);
       setProgress(false);
-      if (!p) { showStatus(`No place called “${esc(q)}” was found. Try a station or street name with the city.`, true); return; }
+      // a failed search leaves the current result (and its inks) in place
+      if (!p) { showStatus(`No place called “${esc(q)}” was found. Try a station or street name with the city.`, true, undefined, true); return; }
       map.jumpTo({ center: [p.lon, p.lat], zoom: 15.3 });
       dropPin(p.lat, p.lon, p.name);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setProgress(false);
-      showStatus(err instanceof LiveError ? err.message : 'Place search failed. Check the connection.', true);
+      showStatus(err instanceof LiveError ? err.message : 'Place search failed. Check the connection.', true, undefined, true);
     }
   });
 
@@ -434,7 +481,7 @@ function applyPadding() {
   map.setPadding(isPhone() ? { left: 0, top: 0, right: 0, bottom: 16 } : { left: 400 + 16, top: 0, right: 0, bottom: 0 });
 }
 
-function showStatus(html: string, error = false, retry?: () => void) {
+function showStatus(html: string, error = false, retry?: () => void, keepResult = false) {
   const s = $('status');
   s.hidden = false;
   s.className = `status${error ? ' error' : ''}`;
@@ -448,8 +495,11 @@ function showStatus(html: string, error = false, retry?: () => void) {
     s.append(b);
   }
   $('empty').hidden = true;
-  if (error || !state.result) $('filled').hidden = true;
-  if (error) $('fixes').hidden = true;
+  if (!(keepResult && state.result)) {
+    if (error || !state.result) $('filled').hidden = true;
+    if (error) $('fixes').hidden = true;
+  }
+  updateReadout();
 }
 
 function setProgress(on: boolean) {
