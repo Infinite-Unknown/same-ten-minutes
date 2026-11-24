@@ -21,3 +21,5 @@ PROJECT_STORY.md
 PITCH_NOTES.md
 PRODUCT.md
 .DS_Store
+*.log
+scripts/tmp/

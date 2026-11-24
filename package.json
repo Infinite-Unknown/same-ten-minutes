@@ -1,0 +1,28 @@
+{
+  "name": "same-ten-minutes",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Walking vs wheelchair reach on real streets, and the one fix that opens up the most.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "fetch-areas": "node --experimental-strip-types scripts/fetch-areas.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "maplibre-gl": "^6.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pngjs": "^6.0.5",
+    "playwright-core": "^1.65.1",
+    "pngjs": "^7.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}

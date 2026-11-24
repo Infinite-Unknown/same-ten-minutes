@@ -1,0 +1,22 @@
+[
+  {
+    "id": "kl-pasar-seni",
+    "name": "Pasar Seni",
+    "place": "Kuala Lumpur, Malaysia",
+    "center": [
+      3.14245,
+      101.69545
+    ],
+    "fetchedAt": "2026-11-24T10:12:37Z"
+  },
+  {
+    "id": "lisbon-baixa",
+    "name": "Baixa and Alfama",
+    "place": "Lisbon, Portugal",
+    "center": [
+      38.71265,
+      -9.13405
+    ],
+    "fetchedAt": "2026-11-24T10:16:38Z"
+  }
+]

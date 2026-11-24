@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Same Ten Minutes</title>
+    <meta name="description" content="Drop a pin and see how much of a neighbourhood a wheelchair user reaches in the time a walker does, from open map data, and which single fix opens up the most." />
+    <meta name="theme-color" content="#F3EEE4" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <a class="skip" href="#panel">Skip to results</a>
+    <div class="app">
+      <div class="map-wrap">
+        <div id="map" aria-label="Map. Click or tap a street to drop the pin. With the map focused, arrow keys pan, plus and minus zoom, and Enter drops the pin at the centre."></div>
+        <canvas id="ink" aria-hidden="true"></canvas>
+        <div class="crosshair" aria-hidden="true"></div>
+        <p class="map-hint" id="map-hint" aria-hidden="true">Click a street to drop the pin</p>
+      </div>
+
+      <main class="card" id="panel" tabindex="-1">
+        <div class="progress" id="progress" aria-hidden="true"></div>
+        <header class="intro reveal">
+          <h1>Same Ten Minutes</h1>
+          <p class="lede">Two people leave the same spot. In the same time, how much of the neighbourhood can a wheelchair user reach?</p>
+        </header>
+
+        <section class="controls reveal" aria-label="Where and how long">
+          <form id="search" role="search" class="search">
+            <label for="q" class="label">Find a place</label>
+            <div class="search-row">
+              <input id="q" name="q" type="search" placeholder="A station, street or neighbourhood" autocomplete="off" spellcheck="false" />
+              <button type="submit" class="btn btn-quiet" aria-label="Search">
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </form>
+          <div class="places" id="places" role="group" aria-label="Sample places, bundled for offline use"></div>
+          <fieldset class="budget" id="budget">
+            <legend class="label">Time on the move</legend>
+            <div class="seg">
+              <input type="radio" name="budget" id="b5" value="5" /><label for="b5">5 min</label>
+              <input type="radio" name="budget" id="b10" value="10" checked /><label for="b10">10 min</label>
+              <input type="radio" name="budget" id="b15" value="15" /><label for="b15">15 min</label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="result reveal" id="result" aria-labelledby="result-h">
+          <h2 id="result-h" class="sr-only">Result</h2>
+          <div class="empty" id="empty">
+            <p><strong>Drop a pin on a street</strong> to compare. Or pick a sample place above.</p>
+          </div>
+          <div class="status" id="status" role="status" hidden></div>
+          <div class="filled" id="filled" hidden>
+            <p class="gap" aria-hidden="true"><span class="gap-num" id="gap-num">0</span><span class="gap-pc">%</span></p>
+            <p class="gap-caption" aria-hidden="true">of the street a person on foot reaches in <span data-budget>10</span> minutes, a wheelchair user reaches too.</p>
+            <p class="sr-only" id="sentence" aria-live="polite"></p>
+            <div class="meter" aria-hidden="true">
+              <div class="meter-row"><span class="swatch swatch-walk"></span><span>On foot</span><span class="num" id="km-walk">0.0 km</span></div>
+              <div class="meter-row"><span class="swatch swatch-wheel"></span><span>Wheelchair</span><span class="num" id="km-wheel">0.0 km</span></div>
+            </div>
+            <table class="reached" aria-label="Places reached">
+              <thead><tr><th scope="col">Within reach</th><th scope="col" class="num">Wheelchair</th><th scope="col" class="num">On foot</th></tr></thead>
+              <tbody id="reached"></tbody>
+            </table>
+            <p class="confidence" id="confidence"></p>
+          </div>
+        </section>
+
+        <section class="fixes reveal" id="fixes" aria-labelledby="fixes-h" hidden>
+          <h2 id="fixes-h">Fix first</h2>
+          <p class="sub">The single changes that would give back the most street, tried one at a time.</p>
+          <ol id="fix-list"></ol>
+          <p class="sub" id="fix-none" hidden>No single fixable barrier changes this reach.</p>
+        </section>
+
+        <section class="legend reveal" aria-labelledby="legend-h">
+          <h2 id="legend-h" class="label">Reading the map</h2>
+          <ul>
+            <li><svg viewBox="0 0 40 14" aria-hidden="true"><path d="M3 7h34" stroke="rgba(31,79,163,.30)" stroke-width="12" stroke-linecap="round"/></svg>Reached on foot</li>
+            <li><svg viewBox="0 0 40 14" aria-hidden="true"><path d="M3 7h34" stroke="#E4572E" stroke-width="4" stroke-linecap="round"/></svg>Reached by wheelchair</li>
+            <li><svg viewBox="0 0 40 14" aria-hidden="true"><path d="M3 7h34" stroke="#E4572E" stroke-width="4" stroke-dasharray="5 6"/></svg>Wheelchair, but the map does not confirm it</li>
+            <li><svg viewBox="0 0 40 14" aria-hidden="true"><path d="M17 1v12M23 1v12" stroke="#1B1A17" stroke-width="3"/></svg>Steps &nbsp;<svg viewBox="0 0 20 14" aria-hidden="true"><path d="M10 1v12" stroke="#1B1A17" stroke-width="3"/></svg>Other barrier</li>
+            <li class="poi-key"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="#FBF8F2" stroke="#1F4FA3" stroke-width="2"/><path d="M5 8h6M8 5v6" stroke="#1F4FA3" stroke-width="2"/></svg>Health
+              <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" fill="#FBF8F2" stroke="#1F4FA3" stroke-width="2"/></svg>School
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 14.5 8 8 14.5 1.5 8Z" fill="#FBF8F2" stroke="#1F4FA3" stroke-width="2"/></svg>Transit
+              <span class="poi-note">orange fill: wheelchair reaches it</span></li>
+          </ul>
+        </section>
+
+        <footer class="foot reveal">
+          <label class="toggle"><input type="checkbox" id="hills" /> <span>Count steep terrain as impassable</span></label>
+          <p>Terrain slopes come from ~30 m elevation data, so by default a steep street is shown as unconfirmed rather than blocked.</p>
+          <details class="method">
+            <summary>Method and thresholds</summary>
+            <ul id="method"></ul>
+          </details>
+          <p id="source">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>, ODbL. Elevation: Terrain Tiles on AWS.</p>
+          <p class="actions"><button type="button" class="btn btn-quiet" id="print" disabled>Print audit sheet</button> <button type="button" class="btn btn-quiet" id="share" disabled>Copy link</button></p>
+        </footer>
+      </main>
+    </div>
+    <div class="print-sheet" id="print-sheet" aria-hidden="true"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
