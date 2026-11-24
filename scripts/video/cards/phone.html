@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Phone</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #F3EEE4; }
+  body { display: grid; place-items: center; }
+  .phone { padding: 12px; border-radius: 58px; background: #1B1A17; box-shadow: 0 1px 2px rgba(27,26,23,.1), 0 30px 60px -24px rgba(27,26,23,.45); }
+  iframe { display: block; width: 390px; height: 844px; border: 0; border-radius: 46px; background: #F3EEE4; }
+</style>
+</head>
+<body>
+  <div class="phone"><iframe id="phone" src="/?debug#place=lisbon-martim-moniz" title="Same Ten Minutes on a phone"></iframe></div>
+  <script>
+    // the map hint is for people, not for the film
+    document.getElementById('phone').addEventListener('load', (e) => {
+      const d = e.target.contentDocument;
+      const s = d.createElement('style');
+      s.textContent = '#map-hint{display:none!important}';
+      d.head.append(s);
+    });
+  </script>
+</body>
+</html>

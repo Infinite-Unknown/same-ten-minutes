@@ -26,3 +26,7 @@ scripts/tmp/
 
 # demo video: uploaded separately, too large for the repo
 assets/demo.mp4
+
+# video work files (frames, narration, tile cache)
+.cache/
+assets/demo-upload.mp4

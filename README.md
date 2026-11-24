@@ -67,6 +67,8 @@ To refresh the bundled areas (one request per area, cached in `data-cache/`):
 npm run fetch-areas
 ```
 
+The demo video is made from the built site by two scripts in `scripts/video/`: `record.mjs` drives the bundled sample places in Chrome and captures them at 2x, reading every figure in the narration from the running app; `edit.mjs` adds the camera moves, captions and narration with ffmpeg. They need a Chrome binary, ffmpeg and a local [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) text-to-speech install (see the header of `record.mjs`).
+
 ## How it works
 
 - **Street graph.** OpenStreetMap ways a person can walk on (footways, paths, steps, pedestrian streets and ordinary streets; never motorways), one edge per pair of consecutive nodes so the ink follows every bend. Kerbs, crossings, gates and tagged widths, surfaces and inclines are kept.
