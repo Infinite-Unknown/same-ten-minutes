@@ -220,4 +220,11 @@ for (const p of plan) {
   const t = mv ? Math.min(mv.t0 + mv.d + 0.4, p.outStart + p.len - 0.2) : p.outStart + p.len / 2;
   ff(['-ss', t.toFixed(3), '-i', out, '-frames:v', '1', join(grabs, `${p.s.name}.png`)]);
 }
+// and one still per callout, once it has drawn on
+const cgrabs = join(grabs, 'callouts');
+mkdirSync(cgrabs, { recursive: true });
+for (const [k, c] of (tl.callouts ?? []).entries()) {
+  const t = outTime(c.t) + 0.7;
+  if (t < total) ff(['-ss', t.toFixed(3), '-i', out, '-frames:v', '1', join(cgrabs, `${String(k).padStart(2, '0')}-${c.scene}.png`)]);
+}
 console.log(`wrote assets/demo.mp4 ${probe(out).toFixed(1)} s, ${(statSync(out).size / 1e6).toFixed(1)} MB; stills in .cache/video/grabs`);

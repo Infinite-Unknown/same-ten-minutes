@@ -8,7 +8,9 @@
 //     moves are cued to the sentence they belong to;
 //   - camera targets, taken from real on-screen rectangles (DOM elements, or map points projected by the map);
 //   - a caption per scene.
-// The cursor is drawn into the page and moved along eased paths, so it is part of the capture.
+// The cursor is drawn into the page and moved along eased paths, so it is part of the capture. When the
+// narration names something, a callout is drawn on its real box at that word: the rest dims, a ring draws on,
+// numbers read aloud get an underline and a pulse, small things get a label on a leader line.
 // Every figure in the narration is read from the running build first.
 // Only the bundled sample places are used. Basemap tiles are cached in .cache/tiles, so a second take
 // does not fetch them again.
@@ -173,7 +175,7 @@ console.log(JSON.stringify(figures, null, 1));
 
 /* ---------- the script; every number above came from the build ---------- */
 const script = {
-  hook: ['Two people leave Martim Moniz, in Lisbon, at the same moment.', 'One walks. The other uses a wheelchair.',
+  hook: ['Two people leave Martim Moniz, in Lisbon, at the same moment.', 'One walks, in blue. The other uses a wheelchair, in orange.',
     `Ten minutes later, the wheelchair user has reached ${say(lis.pct)} percent of the streets the walker has.`],
   title: ['This is Same Ten Minutes.', 'It measures how much of a place a wheelchair user can really reach, compared with someone on foot, in the same time.'],
   barriers: ['The orange ink does not stop because of distance.', 'It stops at barriers: staircases, raised kerbs, rough or narrow paths.', 'Each black mark is one of them, straight from Open Street Map.'],
@@ -189,7 +191,7 @@ const script = {
   kl: ['It works wherever the open map reaches.', `In Kuala Lumpur, from Masjid Jamek, a wheelchair user reaches ${say(kl.pct)} percent.`,
     `The best single fix would raise that to ${say(kl.fixAfter)}.`],
   berlin: [`In Berlin, where the map records nearly every kerb, it can confirm ${say(ber.conf)} percent of the route.`],
-  access: ['A tool about access has to be accessible.', 'Everything works from the keyboard, even the map.', 'And the result is read out as a plain sentence.'],
+  access: ['A tool about access has to be accessible.', 'Everything works from the keyboard.', 'And the result is read out as a plain sentence.'],
   phone: ['On a phone, the figure stays pinned beside the map.', 'It all runs in the browser. No account, no key.'],
   audit: ['And it prints a one-page audit sheet for the council, with every barrier linked to Open Street Map, so anyone can check it, or fix the map.'],
   end: ['Same Ten Minutes.', 'Because ten minutes should be the same ten minutes, for everyone.'],
@@ -269,9 +271,110 @@ padding:20px 26px;font:400 22px/1.5 'Atkinson Hyperlegible Next Variable',sans-s
 #rec-sr.on{opacity:1;transform:translate(-50%,0)}
 #rec-sr b{display:block;font-size:15px;color:#4D483F;margin-bottom:8px;font-weight:600}
 `;
+// Callouts drawn into the page, on the element's real box: a spotlight that dims the rest, a ring that draws
+// on in the accent colour, an underline that draws under a number read aloud, and a label on a leader line
+// for small things. Sizes are divided by the camera zoom, so they look the same size in the film.
+const CALLOUT_JS = `(() => {
+  if (window.__co) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  const ACC = '#E4572E', PAPER = '#FBF8F2', INK = '#1B1A17';
+  const st = document.createElement('style');
+  st.textContent = '#co-hole{transition:x .45s cubic-bezier(.65,0,.35,1),y .45s cubic-bezier(.65,0,.35,1),width .45s cubic-bezier(.65,0,.35,1),height .45s cubic-bezier(.65,0,.35,1),rx .45s}' +
+    '#co-dim{transition:opacity .35s ease}' +
+    '.co-g{transition:opacity .22s ease}.co-ring{transition:stroke-dashoffset .38s cubic-bezier(.65,0,.35,1)}.co-u{transition:stroke-dashoffset .32s cubic-bezier(.23,1,.32,1) .28s}' +
+    '.co-pulse{transform-box:fill-box;transform-origin:center;animation:co-pulse .9s cubic-bezier(.23,1,.32,1) .3s 2}' +
+    '@keyframes co-pulse{0%{transform:scale(1)}35%{transform:scale(1.045)}100%{transform:scale(1)}}' +
+    '.co-label{position:fixed;z-index:2147482001;pointer-events:none;background:' + INK + ';color:' + PAPER + ';font-family:"Atkinson Hyperlegible Next Variable",sans-serif;font-weight:650;white-space:nowrap;opacity:0;transition:opacity .24s ease .22s,transform .3s cubic-bezier(.23,1,.32,1) .22s;box-shadow:0 6px 18px -6px rgba(27,26,23,.5)}';
+  document.head.append(st);
+  const svg = document.createElementNS(NS, 'svg');
+  svg.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:2147482000;overflow:visible';
+  svg.innerHTML = '<defs><filter id="co-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur id="co-std" stdDeviation="8"/></filter>' +
+    '<mask id="co-mask" maskUnits="userSpaceOnUse" x="-100" y="-100" width="10000" height="10000"><rect x="-100" y="-100" width="10000" height="10000" fill="#fff"/><rect id="co-hole" fill="#000" filter="url(#co-blur)"/></mask></defs>' +
+    '<rect id="co-dim" x="-100" y="-100" width="10000" height="10000" fill="' + INK + '" mask="url(#co-mask)" opacity="0"/>';
+  document.body.append(svg);
+  const hole = svg.querySelector('#co-hole'), dim = svg.querySelector('#co-dim'), std = svg.querySelector('#co-std');
+  let cur = null;
+  const el = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const drop = () => { if (!cur) return; const c = cur; cur = null; c.g.style.opacity = '0'; if (c.label) c.label.style.opacity = '0'; setTimeout(() => { c.g.remove(); c.label?.remove(); }, 300); };
+  window.__co = {
+    show(o) {
+      drop();
+      const s = 1 / (o.z || 1);
+      const pad = (o.pad ?? 8) * s;
+      const r = { x: o.x - pad, y: o.y - pad, w: o.w + 2 * pad, h: o.h + 2 * pad };
+      const rx = o.round ? Math.min(r.w, r.h) / 2 : Math.min(12 * s, Math.min(r.w, r.h) / 2);
+      const soft = 6 * s;
+      hole.style.x = (r.x - soft) + 'px'; hole.style.y = (r.y - soft) + 'px';
+      hole.style.width = (r.w + 2 * soft) + 'px'; hole.style.height = (r.h + 2 * soft) + 'px';
+      hole.style.rx = (rx + soft) + 'px';
+      std.setAttribute('stdDeviation', String(9 * s));
+      dim.style.opacity = o.dim === false ? '0' : '0.6';
+      const g = el('g', { class: 'co-g' });
+      const shape = { x: r.x, y: r.y, width: r.w, height: r.h, rx, fill: 'none' };
+      const under = el('rect', { ...shape, stroke: PAPER, 'stroke-width': 7 * s, pathLength: 1, 'stroke-dasharray': 1, 'stroke-dashoffset': 1, class: 'co-ring', opacity: 0.9 });
+      const ring = el('rect', { ...shape, stroke: ACC, 'stroke-width': 3.5 * s, pathLength: 1, 'stroke-dasharray': 1, 'stroke-dashoffset': 1, class: 'co-ring' });
+      g.append(under, ring);
+      let u = null;
+      if (o.num) {
+        const y = r.y + r.h + 7 * s;
+        u = el('line', { x1: r.x + 6 * s, x2: r.x + r.w - 6 * s, y1: y, y2: y, stroke: ACC, 'stroke-width': 5 * s, 'stroke-linecap': 'round', pathLength: 1, 'stroke-dasharray': 1, 'stroke-dashoffset': 1, class: 'co-u' });
+        g.append(u);
+      }
+      svg.append(g);
+      let label = null;
+      if (o.label) {
+        label = document.createElement('div');
+        label.className = 'co-label';
+        label.textContent = o.label;
+        label.style.fontSize = (21 * s) + 'px';
+        label.style.padding = (8 * s) + 'px ' + (14 * s) + 'px';
+        label.style.borderRadius = (10 * s) + 'px';
+        label.style.left = '0px'; label.style.top = '0px';
+        document.body.append(label);
+        const lw = label.offsetWidth, lh = label.offsetHeight;
+        const v = o.view || { x: 0, y: 0, w: innerWidth, h: innerHeight };
+        const m = 14 * s, bottom = 150 * s, gap = 54 * s;
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        const clampX = (x) => Math.max(v.x + m, Math.min(v.x + v.w - m - lw, x));
+        const clampY = (y) => Math.max(v.y + m, Math.min(v.y + v.h - bottom - lh, y));
+        const place = {
+          top: () => ({ x: clampX(cx - lw / 2), y: r.y - gap - lh, ok: r.y - gap - lh >= v.y + m }),
+          bottom: () => ({ x: clampX(cx - lw / 2), y: r.y + r.h + gap, ok: r.y + r.h + gap + lh <= v.y + v.h - bottom }),
+          right: () => ({ x: r.x + r.w + gap, y: clampY(cy - lh / 2), ok: r.x + r.w + gap + lw <= v.x + v.w - m }),
+          left: () => ({ x: r.x - gap - lw, y: clampY(cy - lh / 2), ok: r.x - gap - lw >= v.x + m }),
+        };
+        const order = [o.side, 'top', 'right', 'left', 'bottom'].filter((k, i, a) => k && a.indexOf(k) === i);
+        let p = null;
+        for (const k of order) { const q = place[k](); if (q.ok) { p = { ...q, k }; break; } }
+        if (!p) p = { ...place.top(), k: 'top' };
+        label.style.left = p.x + 'px'; label.style.top = p.y + 'px';
+        label.style.transform = 'translateY(' + (p.k === 'bottom' ? -6 : 6) * s + 'px)';
+        // leader from the label to the ring, with an arrowhead at the ring
+        const lx = p.k === 'right' ? p.x : p.k === 'left' ? p.x + lw : Math.max(p.x + 12 * s, Math.min(p.x + lw - 12 * s, cx));
+        const ly = p.k === 'top' ? p.y + lh : p.k === 'bottom' ? p.y : p.y + lh / 2;
+        const tx = Math.max(r.x, Math.min(r.x + r.w, lx)), ty = Math.max(r.y, Math.min(r.y + r.h, ly));
+        const ex = p.k === 'right' ? r.x + r.w + 3 * s : p.k === 'left' ? r.x - 3 * s : tx;
+        const ey = p.k === 'top' ? r.y - 3 * s : p.k === 'bottom' ? r.y + r.h + 3 * s : ty;
+        const a = Math.atan2(ey - ly, ex - lx), hl = 11 * s;
+        const lead = el('path', { d: 'M' + lx + ' ' + ly + 'L' + ex + ' ' + ey, stroke: ACC, 'stroke-width': 3 * s, fill: 'none', 'stroke-linecap': 'round', pathLength: 1, 'stroke-dasharray': 1, 'stroke-dashoffset': 1, class: 'co-u' });
+        const head = el('path', { d: 'M' + ex + ' ' + ey + 'L' + (ex - hl * Math.cos(a - 0.45)) + ' ' + (ey - hl * Math.sin(a - 0.45)) + 'L' + (ex - hl * Math.cos(a + 0.45)) + ' ' + (ey - hl * Math.sin(a + 0.45)) + 'Z', fill: ACC, opacity: 0, style: 'transition:opacity .15s ease .5s' });
+        g.append(lead, head);
+        requestAnimationFrame(() => requestAnimationFrame(() => { lead.style.strokeDashoffset = '0'; head.setAttribute('opacity', '1'); label.style.opacity = '1'; label.style.transform = 'none'; }));
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        under.style.strokeDashoffset = '0'; ring.style.strokeDashoffset = '0';
+        if (u) u.style.strokeDashoffset = '0';
+        if (o.num) g.classList.add('co-pulse');
+      }));
+      cur = { g, label };
+    },
+    hide() { drop(); dim.style.opacity = '0'; },
+  };
+})();`;
 async function setupPage(p) {
   await p.addStyleTag({ content: OVERLAY_CSS });
   await p.evaluate(() => { for (const id of ['rec-title', 'rec-sr']) { const d = document.createElement('div'); d.id = id; document.body.append(d); } });
+  await p.evaluate(CALLOUT_JS);
   const s = await p.context().newCDPSession(p);
   await s.send('Animation.enable');
   await s.send('Animation.setPlaybackRate', { playbackRate: 1 / SLOW });
@@ -322,16 +425,24 @@ async function done({ tail = 0.6 } = {}) {
 
 /* ---------- camera ---------- */
 const shots = [];
+/** What the camera shows once it lands, in CSS px of the page (the editor clamps the crop the same way). */
+const viewOf = (cx, cy, z) => {
+  const w = W / z, h = H / z;
+  return { x: Math.min(W - w, Math.max(0, cx - w / 2)), y: Math.min(H - h, Math.max(0, cy - h / 2)), w, h };
+};
 const cam = {
   z: 1,
-  wide(d = 0.9) { shots.push({ t: now(), d, cx: W / 2, cy: H / 2, z: 1 }); this.z = 1; return sleep(d * 1000); },
-  cut(t) { shots.push({ t, d: 0, cx: W / 2, cy: H / 2, z: 1 }); this.z = 1; },
+  view: { x: 0, y: 0, w: W, h: H },
+  wide(d = 0.9) { shots.push({ t: now(), d, cx: W / 2, cy: H / 2, z: 1 }); this.z = 1; this.view = viewOf(W / 2, H / 2, 1); return sleep(d * 1000); },
+  cut(t) { shots.push({ t, d: 0, cx: W / 2, cy: H / 2, z: 1 }); this.z = 1; this.view = viewOf(W / 2, H / 2, 1); },
   set(r, opts = {}) { return this.to(r, { ...opts, d: 0 }); },
   to(r, { z, pad = 1.18, d = 1.0, dx = 0, dy = 0 } = {}) {
     const fit = Math.min(W / (r.w * pad), H / (r.h * pad));
     const zz = Math.max(1, Math.min(MAX_Z, z ?? fit));
-    shots.push({ t: now(), d, cx: r.x + r.w / 2 + dx, cy: r.y + r.h / 2 + dy, z: zz });
+    const cx = r.x + r.w / 2 + dx, cy = r.y + r.h / 2 + dy;
+    shots.push({ t: now(), d, cx, cy, z: zz });
     this.z = zz;
+    this.view = viewOf(cx, cy, zz);
     return sleep(d * 1000);
   },
 };
@@ -357,6 +468,80 @@ const fixPoisLL = (i = 0) => page.evaluate((i) => {
   const st = window.stm.state;
   return st.result.fixes[i].newPois.map((id) => st.pois.find((p) => p.id === id)).filter(Boolean).map((p) => [p.lon, p.lat]);
 }, i);
+
+
+/* ---------- callouts, timed to the word that names the thing ---------- */
+/** Waits until word w of sentence i of the current scene is about to be heard (spoken time is spread by characters). */
+async function word(i, w, early = 0.15) {
+  const l = open.lines[i];
+  const k = l.text.indexOf(w);
+  if (k < 0) throw new Error(`"${w}" is not in: ${l.text}`);
+  const speak = Math.max(0.2, l.dur - 0.17);
+  await sleep((open.start + open.lead + open.offsets[i] + (speak * k) / l.text.length - early - now()) * 1000);
+}
+/** A target: a selector, {ll: [lng, lat], r}, {lls: [...], m}, {frame, sel}, or a rect. */
+async function box(t) {
+  if (typeof t === 'string') return rect(t);
+  if (t.ll) { const r = await mapRect([t.ll], t.r ?? 16); return r; }
+  if (t.lls) return mapRect(t.lls, t.m ?? 24);
+  if (t.frame) {
+    const f = await rect(t.frame);
+    const b = await page.frameLocator(t.frame).locator(t.sel).first().boundingBox();
+    // boundingBox inside a frame is already in page coordinates
+    return { x: b.x, y: b.y, w: b.width, h: b.height, f };
+  }
+  if (t.all) {
+    const bs = await page.locator(t.all).evaluateAll((es, n) => es.slice(0, n).map((e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; }), t.n ?? 99);
+    return union(...bs);
+  }
+  return t;
+}
+const calls = [];
+async function co(t, o = {}) {
+  const r = await box(t);
+  calls.push({ t: now(), scene: open?.name, label: o.label ?? null, r: { x: r.x, y: r.y, w: r.w, h: r.h } });
+  await page.evaluate(([r, o]) => window.__co.show({ ...r, ...o }), [{ x: r.x, y: r.y, w: r.w, h: r.h }, { ...o, z: cam.z, view: cam.view }]);
+}
+const coOff = () => page.evaluate(() => window.__co?.hide());
+/** A point on the ink, from the routing result: 'walk' (reached on foot only) or 'wc' (wheelchair, confirmed),
+ *  nearest to a spot given as an offset in CSS px from the pin, and inside the camera view. */
+const inkPoint = (kind, off, view) => page.evaluate(([kind, off, view]) => {
+  const { ink, map, state } = window.stm;
+  const g = ink.geo, res = ink.res, B = res.budget;
+  const p0 = map.project([state.pin.lon, state.pin.lat]);
+  const want = { x: p0.x + off[0], y: p0.y + off[1] };
+  let best = null, bd = Infinity;
+  for (let e = 0; e < g.m; e++) {
+    const a = g.ea[e], b = g.eb[e];
+    const walkOk = res.walk[a] <= B * 0.85 && res.walk[b] <= B * 0.85;
+    const wcOk = res.wc[a] <= B && res.wc[b] <= B;
+    if (kind === 'walk' ? !(walkOk && !(res.wc[a] <= B) && !(res.wc[b] <= B)) : !(wcOk && !g.unverified[e])) continue;
+    if (g.len[e] < 12) continue;
+    const ll = [(g.lon[a] + g.lon[b]) / 2, (g.lat[a] + g.lat[b]) / 2];
+    const q = map.project(ll);
+    if (q.x < view.x + 60 || q.x > view.x + view.w - 60 || q.y < view.y + 60 || q.y > view.y + view.h - 140) continue;
+    const d = Math.hypot(q.x - want.x, q.y - want.y);
+    if (d < bd) { bd = d; best = ll; }
+  }
+  return best;
+}, [kind, off, view]);
+/** The drawn barrier mark of a kind ('steps', 'kerb', ...) nearest the pin inside the view, as [lng, lat]. */
+const markOf = (kind, view) => page.evaluate(([kind, view]) => {
+  const { ink, map, state } = window.stm;
+  const p0 = map.project([state.pin.lon, state.pin.lat]);
+  let best = null, bd = Infinity;
+  for (const m of ink.marks) {
+    if (state.barriers[m.barrier]?.kind !== kind) continue;
+    const ll = ink.markLngLat(m.barrier);
+    if (!ll) continue;
+    const q = map.project(ll);
+    if (q.x < view.x + 40 || q.x > view.x + view.w - 40 || q.y < view.y + 40 || q.y > view.y + view.h - 140) continue;
+    const d = Math.hypot(q.x - p0.x, q.y - p0.y);
+    if (d < bd) { bd = d; best = ll; }
+  }
+  return best;
+}, [kind, view]);
+const PIN = '.maplibregl-marker';
 
 /* ---------- the result card scrolls on its own ---------- */
 async function panelTo(y, ms = 800) {
@@ -436,11 +621,22 @@ try {
   cam.set(await mapRect([pin], 230), { z: 1.75, dx: -20, dy: 60 });
   await scene('hook', { lead: 0.5 });
   await page.locator('.chip', { hasText: 'Martim Moniz' }).evaluate((b) => b.click());
-  await sleep(1900);
-  await cam.to(await mapRect([pin], 330), { z: 1.3, d: 1.4, dx: -60, dy: 80 });
-  await cue(2, 0.9);
-  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.1, d: 1.1 });
+  await word(0, 'Martim Moniz');
+  await co(PIN, { pad: 10, label: 'Martim Moniz, Lisbon', side: 'right' });
+  await word(0, 'at the same', 0.1);
+  await coOff();
+  await cam.to(await mapRect([pin], 330), { z: 1.3, d: 0.8, dx: -60, dy: 80 });
+  await word(1, 'One walks', 0.2);
+  await co({ ll: await inkPoint('walk', [-240, 120], cam.view), r: 20 }, { round: true, label: 'Blue: on foot', side: 'left' });
+  await word(1, 'The other', 0.05);
+  await co({ ll: await inkPoint('wc', [10, 170], cam.view), r: 20 }, { round: true, label: 'Orange: wheelchair', side: 'right' });
+  await cue(2, 0.7);
+  await coOff();
+  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.1, d: 1.0 });
+  await word(2, `${say(lis.pct)} percent`, 0.25);
+  await co('.gap', { num: true, pad: 6 });
   await done({ tail: 0.5 });
+  await coOff();
 
   /* 2. Title */
   await scene('title', { lead: 0.6, caption: null, card: true });
@@ -454,23 +650,44 @@ try {
   await sleep(450);
   const f0 = await fixLL(0);
   const marks = await page.evaluate(() => window.stm.state.result.fixes.slice(0, 3).map((f) => window.stm.ink.markLngLat(f.barrier)).filter(Boolean));
-  await cam.to(await mapRect([...marks, pin], 70), { z: 2.0, d: 1.3 });
-  await cue(1, 0.2);
-  await cam.to(await mapRect([f0], 120), { z: 2.2, d: 1.1 });
+  await cam.to(await mapRect([...marks, pin], 90), { z: 1.9, d: 1.1 });
+  await word(0, 'orange ink');
+  await co({ ll: await inkPoint('wc', [-20, 150], cam.view), r: 20 }, { round: true, label: 'The wheelchair ink', side: 'left' });
+  await word(1, 'staircases');
+  await co({ ll: f0, r: 15 }, { round: true, label: 'A staircase', side: 'left' });
+  const kerb = await markOf('kerb', cam.view);
+  if (kerb) { await word(1, 'raised kerbs'); await co({ ll: kerb, r: 15 }, { round: true, label: 'A raised kerb', side: 'right' }); }
+  const rough = (await markOf('surface', cam.view)) ?? (await markOf('narrow', cam.view));
+  if (rough) { await word(1, 'rough or narrow'); await co({ ll: rough, r: 15 }, { round: true, label: 'A rough or narrow path', side: 'right' }); }
   await cue(2, 0.3);
-  await cam.to(await mapRect([...marks, pin], 150), { z: 1.6, d: 1.1 });
+  await coOff();
+  await cam.to(await mapRect([...marks, pin], 150), { z: 1.6, d: 0.9 });
+  await co({ lls: marks, m: 22 }, { label: 'Barrier marks, from OpenStreetMap', side: 'right' });
   await done({ tail: 0.3 });
+  await coOff();
 
   /* 4. The gap figure, counted again for fifteen minutes */
   await scene('gap', { lead: 0.2 });
-  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.2, d: 1.1 });
-  await cue(1, 0.3);
-  await cam.to(union(await rect('.gap'), await rect('.reached')), { pad: 1.1, d: 1.1 });
-  await pointAt('label[for=b15]', 900);
+  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.2, d: 1.0 });
+  await word(0, `${say(lis.pct)} percent`, 0.25);
+  await co('.gap', { num: true, pad: 6 });
+  await cue(1, 0.5);
+  await coOff();
+  await cam.to(union(await rect('.gap'), await rect('.reached')), { pad: 1.1, d: 0.9 });
+  await word(1, sayKm(lis.wcKm));
+  await co('.meter', { num: true, pad: 8, label: `${lis.wcKm} of ${lis.walkKm} km`, side: 'top' });
+  await word(1, `${say(lis.health[0])} of the`);
+  await co('#reached tr:first-child', { num: true, pad: 6, label: `${lis.health[0]} of ${lis.health[1]} health places`, side: 'top' });
+  await pointAt('label[for=b15]', 700);
   await cue(2, 0.6);
+  await coOff();
   await cam.to(union(await rect('.seg'), await rect('.gap')), { z: 2.0, d: 0.8 });
-  await fresh(page, () => press('label[for=b15]', 300), '15 minutes');
+  await co('label[for=b15]', { pad: 4 });
+  await fresh(page, () => press('label[for=b15]', 250), '15 minutes');
+  await word(2, `${say(lis15.pct)} percent`, 0.25);
+  await co('.gap', { num: true, pad: 6 });
   await done({ tail: 1.2 });
+  await coOff();
   // back to ten minutes, between scenes
   await fresh(page, () => page.click('label[for=b10]'), '10 minutes');
   await page.evaluate(() => window.stm.ink.finish());
@@ -479,55 +696,85 @@ try {
 
   /* 5. Honest about the data */
   await scene('honest', { lead: 0.2 });
-  // where the dashed (unconfirmed) wheelchair streets are: the middle 60% of their midpoints
+  // where the dashed (unconfirmed) wheelchair streets are: the middle 60% of their midpoints, and the one nearest the middle
   const dashed = await page.evaluate(() => {
     const { ink } = window.stm;
     const g = ink.geo, arr = ink.res.wc, B = ink.res.budget;
-    const xs = [], ys = [];
+    const pts = [];
     for (const e of ink.wcEdges) {
-      if (!g.unverified[e] || !(arr[g.ea[e]] <= B) || !(arr[g.eb[e]] <= B)) continue;
-      xs.push((g.lon[g.ea[e]] + g.lon[g.eb[e]]) / 2);
-      ys.push((g.lat[g.ea[e]] + g.lat[g.eb[e]]) / 2);
+      if (!g.unverified[e] || !(arr[g.ea[e]] <= B) || !(arr[g.eb[e]] <= B) || g.len[e] < 15) continue;
+      pts.push([(g.lon[g.ea[e]] + g.lon[g.eb[e]]) / 2, (g.lat[g.ea[e]] + g.lat[g.eb[e]]) / 2]);
     }
-    const q = (a, f) => a.slice().sort((u, v) => u - v)[Math.floor(f * (a.length - 1))];
-    return [[q(xs, 0.2), q(ys, 0.2)], [q(xs, 0.8), q(ys, 0.8)]];
+    const q = (k, f) => pts.map((p) => p[k]).sort((u, v) => u - v)[Math.floor(f * (pts.length - 1))];
+    const box = [[q(0, 0.2), q(1, 0.2)], [q(0, 0.8), q(1, 0.8)]];
+    const mid = [(box[0][0] + box[1][0]) / 2, (box[0][1] + box[1][1]) / 2];
+    const one = pts.reduce((b, p) => (Math.hypot(p[0] - mid[0], p[1] - mid[1]) < Math.hypot(b[0] - mid[0], b[1] - mid[1]) ? p : b), pts[0]);
+    return { box, one };
   });
-  await cam.to(await mapRect(dashed, 60), { pad: 1.1, d: 1.2 });
+  await cam.to(await mapRect(dashed.box, 60), { pad: 1.1, d: 1.0 });
+  await word(0, 'orange line');
+  await co({ ll: dashed.one, r: 22 }, { round: true, label: 'Dashed: the map does not confirm it', side: 'right' });
   await panelShow('#confidence', 220, 900);
   await cue(1, 0.5);
-  await cam.to(await rect('#confidence'), { pad: 1.15, d: 1.1 });
+  await coOff();
+  await cam.to(await rect('#confidence'), { pad: 1.15, d: 0.9 });
+  await word(1, `${say(lis.conf)} percent`, 0.25);
+  await co('#confidence strong', { num: true, pad: 5 });
   await done({ tail: 0.5 });
+  await coOff();
 
   /* 6. Fix first: the barrier lifts and the ink floods */
   await scene('fix', { lead: 0.2 });
-  await cam.wide(0.9);
-  await panelShow('#fixes', 230, 1000);
-  await cam.to(union(await rect('#fixes h2'), await rect('.fix')), { z: 2.0, d: 1.0 });
+  await cam.wide(0.8);
+  await panelShow('#fixes', 230, 900);
+  await cam.to(union(await rect('#fixes h2'), await rect('.fix')), { z: 2.0, d: 0.9 });
+  await word(0, 'question');
+  await co('#fixes h2', { pad: 6 });
+  await word(1, 'single fix');
+  await co('.fix', { pad: 5, label: 'The fix that gives back the most', side: 'top' });
   await cue(2, 0.3);
+  await coOff();
   const fixCard = await rect('.fix');
   const markR = await mapRect([f0], 60);
-  await cam.to(union(fixCard, markR), { pad: 1.12, d: 1.1 });
-  await pointAt('.fix', 1000, 0.5, 0.45);
-  await cue(3, 0.4);
-  await press('.fix', 250, 0.5, 0.45);
-  await sleep(500);
+  await cam.to(union(fixCard, markR), { pad: 1.12, d: 1.0 });
+  await co({ all: '.fix', n: 3 }, { pad: 5, label: 'Each barrier removed in turn, ranked', side: 'right' });
+  await pointAt('.fix', 900, 0.5, 0.45);
+  await word(3, 'one staircase');
+  await co({ ll: f0, r: 15 }, { round: true, label: 'This staircase', side: 'right' });
+  await word(3, 'With a ramp', 0.35);
+  await press('.fix', 200, 0.5, 0.45);
+  await sleep(350);
+  await coOff();
   const flood = await mapRect([f0, ...(await fixPoisLL(0))], 90);
-  await cam.to(union(await rect('#readout'), flood), { pad: 1.06, d: 1.3 });
-  await sleep(1400);
-  await cam.to(flood, { z: 1.7, d: 1.2 });
+  await cam.to(union(await rect('#readout'), flood), { pad: 1.06, d: 1.0 });
+  await word(3, `from ${say(lis.pct)}`, 0.2);
+  await co('#readout .ro-fig', { num: true, pad: 6, label: `${lis.pct}% → ${lis.fixAfter}%`, side: 'right' });
+  await word(3, `${say(lis.fixPlaces)} more places`, 0.4);
+  await coOff();
+  await cam.to(flood, { z: 1.7, d: 0.9 });
+  await co({ lls: await fixPoisLL(0), m: 26 }, { label: `+${lis.fixPlaces} places within reach`, side: 'right' });
   await done({ tail: 0.6 });
+  await coOff();
 
   /* 7. The steep-terrain switch */
   await scene('hills', { lead: 0.3 });
-  await cam.wide(0.9);
-  await panelTo(99999, 1000);
-  await cam.to(await rect('.toggle'), { z: 2.2, d: 1.0 });
-  await pointAt('#hills', 900);
-  await cue(2, 0.2);
-  await fresh(page, () => press('#hills', 250), 'Martim');
-  await sleep(200);
-  await cam.to(union(await rect('#readout'), await mapRect([pin], 160)), { pad: 1.08, d: 1.2 });
+  await cam.wide(0.8);
+  await panelTo(99999, 900);
+  await cam.to(union(await rect('.toggle'), await rect('.foot > p')), { z: 2.2, d: 0.9 });
+  await word(0, 'terrain data');
+  await co('.foot > p', { pad: 5, label: 'About 30 m elevation data', side: 'bottom' });
+  await pointAt('#hills', 700);
+  await word(1, 'flagged');
+  await co('.toggle', { pad: 6, label: 'Off by default', side: 'top' });
+  await word(2, 'Count steep', 0.3);
+  await fresh(page, () => press('#hills', 200), 'Martim');
+  await coOff();
+  await sleep(150);
+  await cam.to(union(await rect('#readout'), await mapRect([pin], 160)), { pad: 1.08, d: 1.0 });
+  await word(2, `${say(lisHills.pct)} percent`, 0.3);
+  await co('#readout .ro-fig', { num: true, pad: 6, label: `${lisHills.pct}% with steep streets blocked`, side: 'right' });
   await done({ tail: 1.0 });
+  await coOff();
   await fresh(page, () => page.locator('#hills').uncheck(), 'Martim');
   await page.evaluate(() => window.stm.ink.finish());
   await panelTo(0, 10);
@@ -536,25 +783,46 @@ try {
 
   /* 8. Kuala Lumpur */
   await scene('kl', { lead: 0.3 });
-  await pointAt('.chip:has-text("Masjid Jamek")', 800);
-  await cue(1, 0.9);
+  await cam.to(await rect('.places'), { z: 2.0, d: 0.8 });
+  await pointAt('.chip:has-text("Masjid Jamek")', 600);
+  await word(0, 'wherever');
+  await co('.chip:has-text("Masjid Jamek")', { pad: 5, label: 'A bundled sample place', side: 'right' });
+  await cue(1, 1.5);
+  await coOff();
   await fresh(page, () => press('.chip:has-text("Masjid Jamek")', 200), 'Masjid');
   await sleep(650); // the map settles on the new reach
   const klPin = await pinLL();
-  await cam.to(await mapRect([klPin], 260), { z: 1.6, d: 0.9 });
-  await sleep(600);
-  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.0, d: 1.1 });
-  await cue(2, 0.4);
-  await cam.wide(1.0);
+  await cam.to(await mapRect([klPin], 260), { z: 1.6, d: 0.8 });
+  await co(PIN, { pad: 10, label: 'Masjid Jamek, Kuala Lumpur', side: 'right' });
+  await word(1, `${say(kl.pct)} percent`, 0.7);
+  await coOff();
+  await cam.to(union(await rect('.gap'), await rect('.gap-caption')), { z: 2.0, d: 0.8 });
+  await co('.gap', { num: true, pad: 6 });
+  await cue(2, 0.5);
+  await coOff();
+  const klFix = await fixLL(0);
+  await cam.to(await mapRect([klFix, klPin], 120), { z: 1.9, d: 0.9 });
+  await co({ ll: klFix, r: 15 }, { round: true, num: true, label: `Fix 1: ${kl.pct}% → ${kl.fixAfter}%`, side: 'right' });
   await done({ tail: 0.4 });
+  await coOff();
 
   /* 9. Berlin */
-  await scene('berlin', { lead: 0.2 });
-  await fresh(page, () => press('.chip:has-text("Alexanderplatz")', 700), 'Alexanderplatz');
-  await sleep(2200);
-  await panelShow('#confidence', 240, 900);
-  await cam.to(await rect('#confidence strong'), { z: 2.2, d: 1.0 });
+  await scene('berlin', { lead: 1.4 });
+  await cam.wide(0.6);
+  await fresh(page, () => press('.chip:has-text("Alexanderplatz")', 500), 'Alexanderplatz');
+  await sleep(650);
+  const berPin = await pinLL();
+  await cam.to(await mapRect([berPin], 260), { z: 1.5, d: 0.7 });
+  await word(0, 'Berlin', 0.1);
+  await co(PIN, { pad: 10, label: 'Alexanderplatz, Berlin', side: 'right' });
+  await word(0, 'it can confirm', 0.6);
+  await coOff();
+  await panelShow('#confidence', 240, 700);
+  await cam.to(await rect('#confidence strong'), { z: 2.2, d: 0.8 });
+  await word(0, `${say(ber.conf)} percent`, 0.25);
+  await co('#confidence strong', { num: true, pad: 5 });
   await done({ tail: 0.6 });
+  await coOff();
 
   /* 10. Keyboard and screen reader */
   await hideCursor(true);
@@ -563,18 +831,29 @@ try {
   await page.focus('#q');
   await sleep(600);
   await scene('access', { lead: 0.3 });
-  await cam.to(union(await rect('#q'), await rect('.places')), { pad: 1.15, d: 1.0 });
-  for (let i = 0; i < 3; i++) { await page.keyboard.press('Tab'); await sleep(520); }
-  await cue(1, 0.1);
+  await cam.to(union(await rect('#q'), await rect('.places')), { pad: 1.15, d: 0.9 });
+  await co('#q', { pad: 4, label: 'Tab', side: 'right' });
+  for (let i = 0; i < 3; i++) {
+    await sleep(480);
+    await page.keyboard.press('Tab');
+    await sleep(60);
+    await co(':focus', { pad: 5, label: 'Tab', side: 'right' });
+  }
+  await word(1, 'keyboard');
+  await co(':focus', { pad: 5, label: 'Enter', side: 'right' });
+  await sleep(300);
   await fresh(page, () => page.keyboard.press('Enter'), 'Martim');
-  await sleep(900);
-  await cam.wide(1.0);
+  await coOff();
+  await sleep(700);
+  await cam.wide(0.8);
   await cue(2, 0.5);
   const sen = await sentence(page);
   await page.evaluate((s) => { const d = document.getElementById('rec-sr'); d.innerHTML = '<b>What a screen reader announces</b>' + s; d.classList.add('on'); }, sen);
-  await sleep(150);
-  await cam.to(await rect('#rec-sr'), { pad: 1.1, d: 1.0 });
+  await sleep(350);
+  await cam.to(await rect('#rec-sr'), { pad: 1.1, d: 0.9 });
+  await co('#rec-sr', { pad: 6, dim: true });
   await done({ tail: 1.6 });
+  await coOff();
   await page.evaluate(() => document.getElementById('rec-sr').classList.remove('on'));
 
   /* 11. Phone */
@@ -585,17 +864,20 @@ try {
   await sleep(2500);
   await scene('phone', { lead: 0.4 });
   await cam.to(await rect('.phone'), { pad: 1.04, d: 0.01 });
-  await sleep(700);
+  await sleep(500);
   await frame.locator('#panel').evaluate((p) => new Promise((done) => {
     const el = document.querySelector('.fixes');
     const target = el.getBoundingClientRect().top - p.getBoundingClientRect().top + p.scrollTop - 90;
     const s = p.scrollTop, t0 = performance.now();
-    const step = (t) => { const q = Math.min(1, (t - t0) / 1100); const e = q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2; p.scrollTop = s + (target - s) * e; q < 1 ? requestAnimationFrame(step) : done(); };
+    const step = (t) => { const q = Math.min(1, (t - t0) / 1000); const e = q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2; p.scrollTop = s + (target - s) * e; q < 1 ? requestAnimationFrame(step) : done(); };
     requestAnimationFrame(step);
   }));
-  await sleep(500);
+  await word(0, 'the figure');
+  await co({ frame: '#phone', sel: '#readout .ro-fig' }, { num: true, pad: 6, label: 'The figure stays pinned', side: 'right' });
+  await cue(1, 0.2);
   await frame.locator('.fix').first().click();
   await done({ tail: 1.4 });
+  await coOff();
 
   /* 12. The audit sheet */
   await loadApp('lisbon-martim-moniz');
@@ -613,15 +895,21 @@ try {
   await sleep(600);
   await scene('audit', { lead: 0.3 });
   await cam.to({ x: 390, y: 20, w: 820, h: 860 }, { pad: 1.02, d: 0.01 });
-  await sleep(1400);
+  await word(0, 'audit sheet');
+  await co('#print-sheet h1', { pad: 8, label: 'One page, ready to print', side: 'right' });
+  await sleep(900);
+  await coOff();
   await page.evaluate(() => new Promise((done) => {
     const s = scrollY, target = Math.min(document.documentElement.scrollHeight - innerHeight, 560), t0 = performance.now();
-    const step = (t) => { const q = Math.min(1, (t - t0) / 2200); const e = q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2; scrollTo(0, s + (target - s) * e); q < 1 ? requestAnimationFrame(step) : done(); };
+    const step = (t) => { const q = Math.min(1, (t - t0) / 1300); const e = q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2; scrollTo(0, s + (target - s) * e); q < 1 ? requestAnimationFrame(step) : done(); };
     requestAnimationFrame(step);
   }));
   const table = await page.locator('#print-sheet table').last().boundingBox();
-  if (table && table.y < H - 60) await cam.to({ x: table.x, y: table.y, w: table.width, h: Math.min(table.height, H - table.y) }, { pad: 1.08, d: 1.1 });
+  if (table && table.y < H - 60) await cam.to({ x: table.x, y: table.y, w: table.width, h: Math.min(table.height, H - table.y) }, { pad: 1.08, d: 0.9 });
+  await word(0, 'every barrier', 0.2);
+  await co({ all: '#print-sheet small' }, { pad: 6, label: 'Each barrier links to OpenStreetMap', side: 'top' });
   await done({ tail: 0.6 });
+  await coOff();
   await page.emulateMedia({ media: 'screen' });
   await page.evaluate(() => { scrollTo(0, 0); document.body.style.background = ''; document.getElementById('print-sheet').style.cssText = ''; });
 
@@ -638,7 +926,7 @@ try {
   server.close();
 }
 
-writeFileSync(join(work, 'timeline.json'), JSON.stringify({ W, H, scale: SCALE, maxZ: MAX_Z, slow: SLOW, figures, frames: captured, scenes, shots }, null, 1));
+writeFileSync(join(work, 'timeline.json'), JSON.stringify({ W, H, scale: SCALE, maxZ: MAX_Z, slow: SLOW, figures, frames: captured, scenes, shots, callouts: calls }, null, 1));
 const dims = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', captured.at(-1).file]).toString().trim();
 if (dims !== `${W * SCALE},${H * SCALE}`) throw new Error(`frames are ${dims}, not ${W * SCALE}x${H * SCALE}`);
 const span = captured.at(-1).t - captured[0].t;
