@@ -1,22 +1,22 @@
 [
   {
-    "id": "kl-pasar-seni",
-    "name": "Pasar Seni",
+    "id": "kl-masjid-jamek",
+    "name": "Masjid Jamek",
     "place": "Kuala Lumpur, Malaysia",
     "center": [
-      3.14245,
-      101.69545
+      3.1473,
+      101.69497
     ],
-    "fetchedAt": "2026-11-24T10:12:37Z"
+    "fetchedAt": "2026-07-15T15:22:01Z"
   },
   {
-    "id": "lisbon-baixa",
-    "name": "Baixa and Alfama",
+    "id": "lisbon-martim-moniz",
+    "name": "Martim Moniz",
     "place": "Lisbon, Portugal",
     "center": [
-      38.71265,
-      -9.13405
+      38.71411,
+      -9.13566
     ],
-    "fetchedAt": "2026-11-24T10:16:38Z"
+    "fetchedAt": "2026-07-15T15:22:01Z"
   }
 ]

@@ -305,6 +305,20 @@ export function buildGraph(area: AreaData, opts: BuildOptions = {}): Graph {
     if (street) b.label += b.kind === 'kerb' || b.kind === 'gate' ? ` at ${street}` : ` off ${street}`;
   }
   const pois = snapPois(area.pois, lat, lon, adjStart, n);
+  // still unnamed: say which named place it is near
+  const GENERIC = new Set(['Bus stop', 'Station', 'Clinic', 'Hospital', 'Pharmacy', 'Doctor', 'School', 'Kindergarten']);
+  for (const b of barriers) {
+    if (/ (on|off|at|near) /.test(b.label)) continue;
+    const v = b.node >= 0 ? b.node : ea[b.edges[0]];
+    if (v === undefined) continue;
+    let best = '', bestD = 150;
+    for (const p of area.pois) {
+      if (GENERIC.has(p.name)) continue;
+      const d = haversine(lat[v], lon[v], p.lat, p.lon);
+      if (d < bestD) { bestD = d; best = p.name; }
+    }
+    if (best) b.label += ` near ${best}`;
+  }
   void osmIds;
 
   return {
