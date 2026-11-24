@@ -335,9 +335,11 @@ function sentence(r: ReachResult, wcLen: number) {
   const p = pct(wcLen, r.walkStats.length);
   const fix = state.fix >= 0 ? r.fixes[state.fix] : null;
   const counts = (['health', 'school', 'transit'] as PoiCategory[])
+    .filter((c) => r.walkStats.pois[c] > 0)
     .map((c) => `${fix ? fix.stats.pois[c] : r.wcStats.pois[c]} of ${r.walkStats.pois[c]} ${{ health: 'health places', school: 'schools', transit: 'stations and stops' }[c]}`)
     .join(', ');
-  let s = `From ${name}, a wheelchair user reaches ${p}% of the street a person on foot reaches in ${r.budget / 60} minutes (${km(wcLen)} of ${km(r.walkStats.length)}), and ${counts}, according to OpenStreetMap as it stands.`;
+  const places = counts ? `, and ${counts}` : '';
+  let s = `From ${name}, a wheelchair user reaches ${p}% of the street a person on foot reaches in ${r.budget / 60} minutes (${km(wcLen)} of ${km(r.walkStats.length)})${places}, according to OpenStreetMap as it stands.`;
   if (fix) s = `With ${lc(state.barriers[fix.barrier].label)} fixed: ` + s;
   else if (r.fixes[0]) s += ` The fix that gives back the most is ${lc(state.barriers[r.fixes[0].barrier].label)}, adding ${km(r.fixes[0].gainLength)}.`;
   return s;
