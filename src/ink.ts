@@ -310,8 +310,8 @@ export class Ink {
     if (!res || !g) return;
     const view = this.project();
     const k = 2 ** (view.z - 16);
-    const walkW = Math.max(4, Math.min(26, 13 * k));
-    const wcW = Math.max(2, Math.min(9, 4.5 * k));
+    const walkW = Math.max(4, Math.min(24, 10 * k));
+    const wcW = Math.max(2.2, Math.min(8, 4 * k));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -339,7 +339,7 @@ export class Ink {
     ctx.strokeStyle = C.wheel;
     ctx.lineWidth = wcW;
     ctx.stroke(solid);
-    ctx.setLineDash([wcW * 1.2, wcW * 1.6]);
+    ctx.setLineDash([wcW * 2.2, wcW * 1.8]);
     ctx.lineCap = 'butt';
     ctx.stroke(dashed);
     ctx.setLineDash([]);

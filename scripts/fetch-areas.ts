@@ -16,11 +16,12 @@ const SERVERS = [
   'https://overpass.private.coffee/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
-const HALF_KM = 1.35;
+// half-width of each extract: big enough that 15 minutes on foot from the centre stays inside
+const HALF_KM = 1.6;
 
 export const AREAS: { id: string; name: string; place: string; lat: number; lon: number }[] = [
-  { id: 'kl-pasar-seni', name: 'Pasar Seni', place: 'Kuala Lumpur, Malaysia', lat: 3.14245, lon: 101.69545 },
-  { id: 'lisbon-baixa', name: 'Baixa and Alfama', place: 'Lisbon, Portugal', lat: 38.71265, lon: -9.13405 },
+  { id: 'kl-masjid-jamek', name: 'Masjid Jamek', place: 'Kuala Lumpur, Malaysia', lat: 3.1473, lon: 101.69497 },
+  { id: 'lisbon-martim-moniz', name: 'Martim Moniz', place: 'Lisbon, Portugal', lat: 38.71411, lon: -9.13566 },
   { id: 'hk-central', name: 'Central', place: 'Hong Kong', lat: 22.28195, lon: 114.15805 },
   { id: 'berlin-alexanderplatz', name: 'Alexanderplatz', place: 'Berlin, Germany', lat: 52.52155, lon: 13.41155 },
 ];
@@ -72,10 +73,16 @@ async function main() {
   for (const a of AREAS) {
     if (only.length && !only.includes(a.id)) continue;
     const bbox = bboxAround(a.lat, a.lon, HALF_KM);
-    const rawFile = `data-cache/overpass-${a.id}.json`;
+    const rawFile = `data-cache/overpass-${a.id}-${HALF_KM}.json`;
     if (!existsSync(rawFile)) {
       console.log(`Overpass: ${a.id} ${bbox.join(',')}`);
-      const raw = await overpass(overpassQuery(bbox));
+      let raw: unknown;
+      try {
+        raw = await overpass(overpassQuery(bbox));
+      } catch (e) {
+        console.log(`  skipped ${a.id}: ${(e as Error).message}`);
+        continue;
+      }
       writeFileSync(rawFile, JSON.stringify(raw));
       await sleep(5_000);
     } else console.log(`cached: ${a.id}`);

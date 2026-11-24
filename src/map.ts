@@ -58,7 +58,7 @@ export async function createMap(container: HTMLElement, center: [number, number]
   });
   map.touchZoomRotate.disableRotation();
   map.keyboard.disableRotation();
-  map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>' }), 'bottom-right');
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   await new Promise<void>((res) => map.once('load', () => res()));
   return map;

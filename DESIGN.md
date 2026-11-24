@@ -13,13 +13,13 @@ Light only. (A dark theme would need a second basemap and ink calibration; not f
 | `--paper` | `#F3EEE4` | page and map land |
 | `--card` | `#FBF8F2` | the result card |
 | `--ink` | `#1B1A17` | primary text, barrier marks |
-| `--ink-2` | `#4D483F` | secondary text (8.1:1 on card) |
-| `--ink-3` | `#6B6458` | captions, attribution (5.3:1 on card) |
+| `--ink-2` | `#4D483F` | secondary text (8.6:1 on card) |
+| `--ink-3` | `#6B6458` | captions, attribution (5.5:1 on card) |
 | `--rule` | `#DDD4C4` | hairlines, control borders |
 | `--walk` | `#1F4FA3` | walking ink, focus ring, links |
 | `--walk-band` | `rgba(31,79,163,.30)` | the walking ink band on the map |
-| `--wheel` | `#E4572E` | wheelchair ink on the map |
-| `--wheel-text` | `#B23B14` | wheelchair figures as text (5.2:1 on card) |
+| `--wheel` | `#E4572E` | wheelchair ink on the map (graphics only: 3.5:1, never small text) |
+| `--wheel-text` | `#B23B14` | wheelchair figures as text (5.6:1 on card) |
 | `--danger` | `#9E2A12` | error text |
 
 Blue/vermilion stays distinct for protanopia and deuteranopia. Colour is never the only cue: walking ink is a wide translucent band, wheelchair ink is a narrow solid line on top, unverified wheelchair street is dashed, barriers are black glyphs.

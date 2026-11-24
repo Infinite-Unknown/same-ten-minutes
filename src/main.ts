@@ -244,6 +244,7 @@ function renderReached(r: ReachResult) {
     const n = r.wcStats.pois[c];
     const plus = fix ? fix.stats.pois[c] - n : 0;
     const short = n < m;
+    if (m === 0) return `<tr class="none"><td>${CAT_LABEL[c]}</td><td class="num" colspan="2">none mapped within reach</td></tr>`;
     return `<tr><td>${CAT_LABEL[c]}</td><td class="num wc${short ? ' short' : ''}">${n}${plus > 0 ? `<span class="gain">+${plus}</span>` : ''}</td><td class="num">${m}</td></tr>`;
   });
   $('reached').innerHTML = rows.join('');
@@ -331,8 +332,8 @@ function sentence(r: ReachResult, wcLen: number) {
     .map((c) => `${fix ? fix.stats.pois[c] : r.wcStats.pois[c]} of ${r.walkStats.pois[c]} ${{ health: 'health places', school: 'schools', transit: 'stations and stops' }[c]}`)
     .join(', ');
   let s = `From ${name}, a wheelchair user reaches ${p}% of the street a person on foot reaches in ${r.budget / 60} minutes (${km(wcLen)} of ${km(r.walkStats.length)}), and ${counts}, according to OpenStreetMap as it stands.`;
-  if (fix) s = `With ${state.barriers[fix.barrier].label.toLowerCase()} fixed: ` + s;
-  else if (r.fixes[0]) s += ` The fix that gives back the most is ${state.barriers[r.fixes[0].barrier].label.toLowerCase()}, adding ${km(r.fixes[0].gainLength)}.`;
+  if (fix) s = `With ${lc(state.barriers[fix.barrier].label)} fixed: ` + s;
+  else if (r.fixes[0]) s += ` The fix that gives back the most is ${lc(state.barriers[r.fixes[0].barrier].label)}, adding ${km(r.fixes[0].gainLength)}.`;
   return s;
 }
 
@@ -496,6 +497,9 @@ function printSheet() {
 
 function km(m: number) {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 10) * 10} m`;
+}
+function lc(s: string) {
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 function pct(a: number, b: number) {
   return b > 0 ? Math.round((100 * a) / b) : 0;

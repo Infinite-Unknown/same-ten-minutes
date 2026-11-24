@@ -293,7 +293,17 @@ export function buildGraph(area: AreaData, opts: BuildOptions = {}): Graph {
   const adjEdge = new Uint32Array(2 * m);
   for (let e = 0; e < m; e++) { adjEdge[fill[ea[e]]++] = e; adjEdge[fill[eb[e]]++] = e; }
 
-  // drop node barriers that no edge touches
+  // name unnamed barriers after the street they sit on or lead off
+  for (const b of barriers) {
+    if (b.label.includes(' on ')) continue;
+    const nodes = b.node >= 0 ? [b.node] : b.edges.flatMap((e) => [ea[e], eb[e]]);
+    let street = '';
+    for (const v of nodes) {
+      for (let i = adjStart[v]; i < adjStart[v + 1] && !street; i++) street = wayName[edgeWay[adjEdge[i]]] ?? '';
+      if (street) break;
+    }
+    if (street) b.label += b.kind === 'kerb' || b.kind === 'gate' ? ` at ${street}` : ` off ${street}`;
+  }
   const pois = snapPois(area.pois, lat, lon, adjStart, n);
   void osmIds;
 
