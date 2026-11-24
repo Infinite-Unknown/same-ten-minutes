@@ -21,9 +21,28 @@ It is also a measuring tool a community can run on its own streets, for free, in
 
 Everything is computed in the browser from open data. Nothing on screen is typed in by hand.
 
+## Sample places (bundled)
+
+Figures for 10 minutes, as the app computes them from the bundled extracts:
+
+| Place | Wheelchair reach vs on foot | Map confirms | Top fix |
+|---|---|---|---|
+| Martim Moniz, Lisbon | 11% (5.1 of 44.0 km) | 70% | Steps on Calçada de São Lourenço: 31%, +15 places |
+| Masjid Jamek, Kuala Lumpur | 36% (21.7 of 59.7 km) | 44% | Steps near Muzium Tekstil Negara: 50% |
+| Alexanderplatz, Berlin | 42% (26.6 of 63.0 km) | 93% | Rough surface off Dircksenstraße: 46% |
+
+Open one directly with `#place=lisbon-martim-moniz`, `#place=kl-masjid-jamek` or `#place=berlin-alexanderplatz`.
+
+| | |
+|---|---|
+| ![Kuala Lumpur, Masjid Jamek](assets/kuala-lumpur-masjid-jamek.png) | ![Berlin, Alexanderplatz](assets/berlin-alexanderplatz.png) |
+| ![A place fetched live: Brickfields, Kuala Lumpur](assets/live-search-brickfields.png) | ![Phone layout](assets/phone-375.png) |
+
+The printed audit sheet: [`assets/audit-sheet-berlin.pdf`](assets/audit-sheet-berlin.pdf).
+
 ## Run it
 
-Requires Node 22 or newer.
+Requires Node 22 or newer (`npm run fetch-areas` runs TypeScript directly and needs Node 23.6 or newer).
 
 ```bash
 npm install
@@ -78,7 +97,7 @@ All thresholds live in [`src/engine/profiles.ts`](src/engine/profiles.ts). They 
 
 - footpaths with no `surface`, `smoothness` or `wheelchair` tag (ordinary streets are assumed paved);
 - crossings and `barrier=kerb` nodes without a kerb height;
-- slopes beyond 1:12 that come only from terrain data. Terrain Tiles are built from ~30 m elevation data, which cannot judge a single street and is noisy under tall buildings. In central Kuala Lumpur the terrain model gives a median street gradient above 5%, which is not plausible street by street. So by default a terrain-only slope is flagged and slowed, not blocked. The "Count steep terrain as impassable" switch blocks it instead, and a tagged `incline` always counts.
+- slopes beyond 1:12 that come only from terrain data. Terrain Tiles are built from ~30 m elevation data, which cannot judge a single street and is noisy under tall buildings. In central Kuala Lumpur the terrain model gives a median street gradient of about 6%, which is not plausible street by street; in Hong Kong Central it is about 14%, so that area was not bundled. So by default a terrain-only slope is flagged and slowed, not blocked. The "Count steep terrain as impassable" switch blocks it instead, and a tagged `incline` always counts.
 
 **Places** are amenities tagged clinic, hospital, pharmacy, doctors, school or kindergarten, railway stations and bus stops, each joined to the nearest street node within 100 m.
 
