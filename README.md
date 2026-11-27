@@ -2,6 +2,8 @@
 
 **Drop a pin. Two inks spread along the real streets for the same ten minutes: one for a person on foot, one for a person in a manual wheelchair. The wheelchair ink stops at every staircase, raised kerb and rough path. Then the app names the single fix that gives back the most of the neighbourhood, and shows the ink flooding through when it is made.**
 
+**Try it: https://infinite-unknown.github.io/same-ten-minutes/**
+
 ![Same Ten Minutes: walking and wheelchair reach from Martim Moniz, Lisbon](assets/hero.png)
 
 Step-free routers answer "how do I get from A to B". Same Ten Minutes answers two different questions, the ones a resident, an advocate or a council needs before spending money:
